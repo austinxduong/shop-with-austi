@@ -56,3 +56,31 @@ async function setupDatabaseAndCollection(): Promise<void> {
         console.log("'items' collection already exists in 'inventory_database' database")
     }
 }
+
+async function createVectorSearchIndex(): Promise<void> {
+    try {
+        const db = client.db("inventory_database")
+        const collection = db.collection("items")
+        await collection.dropIndexes()
+        const vectorSearchIdx = {
+            name: "vector_index",
+            type: "vectorSearch",
+            definition: {
+                "fields": [
+                    {
+                        "type": "vector",
+                        "path": "embedding",
+                        "numDimensions": 768,
+                        "similarity": "cosine"
+                    }
+                ]
+            }
+        }
+        console.log("creating vector search index...")
+        await collection.createSearchIndex(vectorSearchIdx);
+        console.log("successfully created vector search index");
+
+    } catch(error){
+        console.error('Failed to create vectoor search index',error)
+    }
+}
