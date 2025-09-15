@@ -84,3 +84,17 @@ async function createVectorSearchIndex(): Promise<void> {
         console.error('Failed to create vectoor search index',error)
     }
 }
+
+async function generateSyntheticData(): Promise <void> {
+    const prompt = `You are a helpful assistant that generates furniture 
+    store item data. Generate 10 furniture store items. Each record should
+    include the following fields: item_id, item_name, item_description,
+    brand, manufacturer_address, prices, catagories, user_reviews, notes.
+    Ensure variety in the data and realisteic values.
+    
+    ${parser.getFormatInstructions()}`
+
+    console.log("Generating synthetic data...")
+
+    const response = await llm.invoke(prompt)
+}
