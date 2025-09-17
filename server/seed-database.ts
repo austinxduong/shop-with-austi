@@ -121,3 +121,48 @@ async function createItemSummary(item: Item) : Promise<string> {
         resolve(summary)
         })
 }
+async function seedDatabase(): Promise<void> {
+    try {   
+        await client.connect()
+        await client.db("admin").command({ ping: 1 })
+        console.log("you successfully connected to MongoDB!")
+
+        await setupDatabaseAndCollection()
+        await createVectorSearchIndex()
+        
+        const db = client.db("inventory_database")
+        const collection = db.collection("items")
+
+        await collection.deleteMany({})
+        console.log("cleared existing data from items collection")
+
+        const syntheticData = await generateSyntheticData()
+
+        const recordsWithSummaries = await Promise.all(
+            syntheticData.map(async(record) => ({
+                pageContent: await createItemSummary(record),
+                metadata: {...record}
+            }))
+        )
+
+        for (const record of recordsWithSummaries) {
+            await MongoDBAtlasVectorSearch.fromDocuments(
+                [record],
+                new GoogleGenerativeAIEmbeddings({
+                    apiKey: process.env.GOOGLE_API_KEY,
+                    modelName: "text-embedding-004"
+                }),
+                {
+                    collection,
+                    indexName: "vector_index",
+                    textKey: "embedding_text",
+                    embeddingKey: "embedding"
+                }
+            )
+            console.log("successfully processed & saved record:", record.metadata.item_id)
+        }
+
+    } catch (error) {
+        console.error(error)
+    }
+}
