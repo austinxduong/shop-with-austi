@@ -161,8 +161,13 @@ async function seedDatabase(): Promise<void> {
             )
             console.log("successfully processed & saved record:", record.metadata.item_id)
         }
+            console.log("database seeding completed")
 
     } catch (error) {
         console.error(error)
+    } finally {
+        await client.close()
     }
 }
+
+seedDatabase().catch(console.error)
