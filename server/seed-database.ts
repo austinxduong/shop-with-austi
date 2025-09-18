@@ -121,6 +121,7 @@ async function createItemSummary(item: Item) : Promise<string> {
         resolve(summary)
         })
 }
+
 async function seedDatabase(): Promise<void> {
     try {   
         await client.connect()
@@ -144,7 +145,7 @@ async function seedDatabase(): Promise<void> {
                 metadata: {...record}
             }))
         )
-
+    
         for (const record of recordsWithSummaries) {
             await MongoDBAtlasVectorSearch.fromDocuments(
                 [record],
