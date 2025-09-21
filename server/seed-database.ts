@@ -12,6 +12,7 @@ const llm = new ChatGoogleGenerativeAI({
     temperature: 0.7,
     apiKey: process.env.GOOGLE_API_KEY
 })
+// google gemini must be enabled via. gui
 
 const itemSchema = z.object ({
     item_id: z.string(),
