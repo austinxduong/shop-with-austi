@@ -30,4 +30,12 @@ async function retryWithBackoff<T>(
     throw new Error("max retries exceeded")
 }
 
-export async function
+export async function callAgent(client: MongoClient, query: string, thread_id: string) {
+    try {
+        const dbName = "inventory_database"
+        const db = client.db(dbName)
+        const collection = db.collection("items")
+    } catch(error) {
+        console.error(error)
+    }
+}
