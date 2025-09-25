@@ -1,6 +1,6 @@
 import { GoogleGenerativeAIEmbeddings, ChatGoogleGenerativeAI } from "@langchain/google-genai"
 import { AIMessage, BaseMessage, HumanMessage } from "@langchain/core/messages"
-import { ChatPromptTemplate, MessagesPlaceholder } from "@langhchain/core/prompts"
+import { ChatPromptTemplate, MessagesPlaceholder } from "@langchain/core/prompts"
 import { StateGraph, Annotation } from "@langchain/langgraph"
 import { tool } from "@langchain/core/tools"
 import { ToolNode } from "@langchain/langgraph/prebuilt"
@@ -107,11 +107,116 @@ export async function callAgent(client: MongoClient, query: string, thread_id: s
                         })
                     } catch(error) {
                         console.error("Error in the item lookup:", error)
+                        console.error("Error details:", {
+                            message: error.message,
+                            stack: error.stack,
+                            name: error.name
+                        })
+
+                        return JSON.stringify({
+                            error: "Faled to search inventory",
+                            details: error.message,
+                            query: query
+                        })
                     }
+                },
+      {
+        name: "item_lookup",                                    // Tool name that the AI will reference
+        description: "Gathers furniture item details from the Inventory database", // Description for the AI
+        schema: z.object({                                      // Input validation schema
+          query: z.string().describe("The search query"),      // Required string parameter
+          n: z.number().optional().default(10)                 // Optional number parameter with default
+            .describe("Number of results to return"),
+        }),
+      }
+    )
+
+            const tools = [itemLookupTool]
+            const toolNode = new ToolNode<typeof GraphState.State>(tools)
+
+            const model = new ChatGoogleGenerativeAI({
+                model: "gemini-1.5-flash",
+                temperature: 0,
+                maxRetries: 0,
+                apiKey: process.env.GOOGLE_API_KEY,
+            }).bindTools(tools)
+
+            function shouldContinue(state: typeof GraphState.State) {
+                const messages = state.messages
+                const lastMessage = messages[messages.length -1] as AIMessage
+
+                if (lastMessage.tool_calls?.length) {
+                    return "tools"
                 }
-            )
+                return "__end__"
+            }
+
+            async function callModel(state: typeof GraphState.State) {
+                return retryWithBackoff(async() => {
+                    const prompt = ChatPromptTemplate.fromMessages([
+                        [
+                            "system",
+                            `You are a helpful E-commerce Chatbot Agent for a furniture store.
+                            
+                            IMPORTANT: You have access to an item_lookup tool that searches the
+                            furniture inventory database. ALWAYS use this tool when customers ask
+                            about furniture items, even if the tool returns errors or empty results.
+
+                            When using the item_lookup tool:
+                            - If it returns results, provide helpful details about the furniture items
+                            - If it returns an error or no results, acknowledge this and offer to help
+                            in other ways
+                            - If the database appears to be empty, let the customer know that inventory 
+                            might be being updated
+
+                            Current time: {time}`
+
+                        ],
+                        new MessagesPlaceholder("messages"),
+                ])
+
+                const formattedPrompt = await prompt.formatMessages({
+                    time: new Date().toISOString(),
+                    messages: state.messages,
+                })
+
+                const result = await model.invoke(formattedPrompt)
+                return { messages: [result] }
+
+            })
+        }
+
+        const workflow = new StateGraph(GraphState)
+        .addNode("agent", callModel)
+        .addNode("tools", toolNode)
+        .addEdge("__start__", "agent")
+        .addConditionalEdges("agent", shouldContinue)
+        .addEdge("tools", "agent")
+
+        const checkpointer = new MongoDBSaver({ client, dbName })
+
+        const app = workflow.compile({ checkpointer })
+
+        const finalState = await app.invoke({
+            messages: [new HumanMessage(query)]
+        }, {
+            recursionLimit: 15,
+            configurable: { thread_id: thread_id }
+        })
+
+        const response = finalState.messages[finalState.messages.length - 1].content
+        console.log("Agent response:", response)
+        return response
 
     } catch(error) {
-        console.error(error)
+        console.error("Error in callAgent:", error.message)
+
+        if (error.status === 429) {
+            throw new Error("Service temporarily unavailable due to rate limits. Please try again in a minute.")
+        } else if (error.status ===401) {
+            throw new Error("Authentication failed. Please check your API configuration.")
+        } else {
+            throw new Error(`Agent failed ${error.message}`)
+        }
     }
 }
