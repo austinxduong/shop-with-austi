@@ -1,6 +1,7 @@
 import { FaSearch, FaShoppingCart, FaUser, FaHeart } from 'react-icons/fa'
 // import ChatWidget from "./ChatWidget"
 
+
 const EcommerceStore = () => {
     return(
         <>
